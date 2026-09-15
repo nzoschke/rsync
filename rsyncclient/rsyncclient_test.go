@@ -335,3 +335,57 @@ func TestClientServerCommandSender(t *testing.T) {
 	// Ensure an error would be displayed, if any.
 	wg.Wait()
 }
+
+func TestClientServerCommandSenderLargeLiteral(t *testing.T) {
+	t.Parallel()
+
+	stderr := testlogger.New(t)
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src") + "/"
+	dest := filepath.Join(tmp, "dest")
+	want := bytes.Repeat([]byte("large literal payload\n"), 32*1024)
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "large.bin"), want, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := rsyncclient.New([]string{"-av"}, rsyncclient.WithSender())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := rsyncd.NewServer(nil, rsyncd.WithStderr(stderr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdinrd, stdinwr := io.Pipe()
+	stdoutrd, stdoutwr := io.Pipe()
+	conn := rsyncd.NewConnection(stdinrd, stdoutwr, "<io.Pipe>")
+	osenv := rsyncostest.New(t)
+	pc := rsyncopts.NewContext(rsyncopts.NewOptions(osenv))
+	if err := pc.ParseArguments(osenv, client.ServerCommandOptions(dest)); err != nil {
+		t.Fatalf("parsing server args: %v", err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := srv.InternalHandleConn(t.Context(), conn, nil, pc); err != nil {
+			t.Error(err)
+		}
+	}()
+	rw := &rsync.BothCloser{ReadCloser: stdoutrd, WriteCloser: stdinwr}
+	if _, err := client.Run(t.Context(), rw, []string{src}); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	got, err := os.ReadFile(filepath.Join(dest, "large.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("large.bin differs: got %d bytes, want %d", len(got), len(want))
+	}
+}

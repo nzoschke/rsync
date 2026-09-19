@@ -146,6 +146,15 @@ func (rt *Transfer) recvGenerator(idx int, f *File) error {
 	st, err := rt.DestRoot.Lstat(f.Name)
 
 	mode := f.Mode & rsync.S_IFMT
+	// --ignore-existing applies to all existing non-directories. Existing
+	// directories still need to be processed so that their contents can be
+	// transferred and their attributes can be preserved.
+	if rt.Opts.IgnoreExisting && err == nil && (mode != rsync.S_IFDIR || !st.IsDir()) {
+		if rt.Opts.InfoGTE(rsyncopts.INFO_SKIP, 1) {
+			rt.Logger.Printf("%s exists", local)
+		}
+		return nil
+	}
 	if mode == rsync.S_IFDIR {
 		if rt.Opts.DryRun {
 			return nil

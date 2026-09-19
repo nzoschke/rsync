@@ -367,6 +367,7 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 			PreserveTimes:     opts.PreserveMTimes(),
 			PreserveHardlinks: opts.PreserveHardLinks(),
 			IgnoreTimes:       opts.IgnoreTimes(),
+			IgnoreExisting:    opts.IgnoreExisting(),
 			AlwaysChecksum:    opts.AlwaysChecksum(),
 			DoFsync:           opts.DoFsync(),
 			KeepPartial:       opts.KeepPartial(),

@@ -335,3 +335,68 @@ func TestClientServerCommandSender(t *testing.T) {
 	// Ensure an error would be displayed, if any.
 	wg.Wait()
 }
+
+func TestClientServerCommandSenderIgnoreExisting(t *testing.T) {
+	t.Parallel()
+
+	stderr := testlogger.New(t)
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src") + "/"
+	dest := filepath.Join(tmp, "dest")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "existing"), []byte("source replacement"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "missing"), []byte("new file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "existing"), []byte("destination"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := rsyncclient.New([]string{"-av", "--ignore-existing"}, rsyncclient.WithSender())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := rsyncd.NewServer(nil, rsyncd.WithStderr(stderr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdinrd, stdinwr := io.Pipe()
+	stdoutrd, stdoutwr := io.Pipe()
+	conn := rsyncd.NewConnection(stdinrd, stdoutwr, "<io.Pipe>")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := server.HandleConnArgs(t.Context(), conn, nil, client.ServerCommandOptions(dest)); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	rw := &rsync.BothCloser{ReadCloser: stdoutrd, WriteCloser: stdinwr}
+	if _, err := client.Run(t.Context(), rw, []string{src}); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	existing, err := os.ReadFile(filepath.Join(dest, "existing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(existing), "destination"; got != want {
+		t.Fatalf("existing file changed: got %q, want %q", got, want)
+	}
+	missing, err := os.ReadFile(filepath.Join(dest, "missing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(missing), "new file"; got != want {
+		t.Fatalf("missing file contents: got %q, want %q", got, want)
+	}
+}

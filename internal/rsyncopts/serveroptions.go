@@ -189,8 +189,9 @@ func (o *Options) ServerOptions() []string {
 	// if (only_existing && am_sender)
 	// 	args[ac++] = "--existing";
 
-	// if (opt_ignore_existing && am_sender)
-	// 	args[ac++] = "--ignore-existing";
+	if o.Sender() && o.IgnoreExisting() {
+		sargv = append(sargv, "--ignore-existing")
+	}
 
 	// if (tmpdir) {
 	// 	args[ac++] = "--temp-dir";

@@ -727,6 +727,7 @@ func (o *Options) Daemon() bool               { return o.am_daemon != 0 }
 func (o *Options) ConnectTimeoutSeconds() int { return o.connect_timeout }
 func (o *Options) AlwaysChecksum() bool       { return o.always_checksum != 0 }
 func (o *Options) IgnoreTimes() bool          { return o.ignore_times != 0 }
+func (o *Options) IgnoreExisting() bool       { return o.ignore_existing != 0 }
 func (o *Options) OutputMOTD() bool           { return o.output_motd != 0 }
 func (o *Options) KeepPartial() bool          { return o.keep_partial != 0 }
 func (o *Options) RsyncPort() int             { return o.rsync_port }
@@ -888,7 +889,7 @@ func (o *Options) gokrazyTable() []poptOption {
 		{"update", "u", POPT_ARG_NONE, &o.update_only, 0},
 		//{"existing", "", POPT_ARG_NONE, &o.ignore_non_existing, 0},
 		//{"ignore-non-existing", "", POPT_ARG_NONE, &o.ignore_non_existing, 0},
-		//{"ignore-existing", "", POPT_ARG_NONE, &o.ignore_existing, 0},
+		{"ignore-existing", "", POPT_ARG_NONE, &o.ignore_existing, 0},
 		//{"max-size", "", POPT_ARG_STRING, &o.max_size_arg, OPT_MAX_SIZE},
 		//{"min-size", "", POPT_ARG_STRING, &o.min_size_arg, OPT_MIN_SIZE},
 		//{"max-alloc", "", POPT_ARG_STRING, &o.max_alloc_arg, 0},

@@ -303,6 +303,50 @@ func TestReceiverSyncPartial(t *testing.T) {
 	}
 }
 
+func TestReceiverSyncIgnoreExisting(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	source := filepath.Join(tmp, "source")
+	dest := filepath.Join(tmp, "dest")
+	if err := os.MkdirAll(source, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "existing"), []byte("source replacement"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "missing"), []byte("new file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "existing"), []byte("destination"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := rsynctest.NewInMemory(t, rsyncd.Module{
+		Name: "interop",
+		Path: source,
+	})
+	srv.RunClient(t, []string{"-a", "--ignore-existing"}, "./", []string{dest})
+
+	existing, err := os.ReadFile(filepath.Join(dest, "existing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(existing), "destination"; got != want {
+		t.Fatalf("existing file changed: got %q, want %q", got, want)
+	}
+	missing, err := os.ReadFile(filepath.Join(dest, "missing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(missing), "new file"; got != want {
+		t.Fatalf("missing file contents: got %q, want %q", got, want)
+	}
+}
+
 func TestReceiverSyncDelete(t *testing.T) {
 	t.Parallel()
 

@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 
 	"github.com/gokrazy/rsync/internal/maincmd"
@@ -42,6 +43,15 @@ func WithSender() Option {
 	})
 }
 
+// WithSourceFS makes a sender read paths from fsys instead of the host file
+// system. Paths passed to [Client.Run] are interpreted relative to fsys.
+// Files returned by fsys must implement [io.Seeker].
+func WithSourceFS(fsys fs.FS) Option {
+	return clientOptionFunc(func(c *Client) {
+		c.sourceFS = fsys
+	})
+}
+
 // WithoutNegotiate disables protocol version negotiation (enabled by default).
 func WithoutNegotiate() Option {
 	return clientOptionFunc(func(c *Client) {
@@ -60,6 +70,7 @@ type Client struct {
 	opts      *rsyncopts.Options
 	negotiate bool
 	sender    bool
+	sourceFS  fs.FS
 }
 
 // New creates a new [Client]. You can call [Client.Run] one or more times with
@@ -122,7 +133,7 @@ type Result struct {
 // [Client.ServerCommandOptions] to the server and then arrange for two
 // [io.ReadWriter] connections between client and server.
 func (c *Client) Run(ctx context.Context, conn io.ReadWriteCloser, paths []string) (*Result, error) {
-	stats, err := maincmd.ClientRun(c.osenv, c.opts, conn, paths, c.negotiate)
+	stats, err := maincmd.ClientRun(c.osenv, c.opts, conn, paths, c.negotiate, c.sourceFS)
 	if err != nil {
 		return nil, err
 	}

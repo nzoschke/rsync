@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,7 +148,7 @@ func rsyncMain(ctx context.Context, osenv *rsyncos.Env, opts *rsyncopts.Options,
 		}
 		negotiate = false // already done
 	}
-	stats, err := ClientRun(osenv, opts, conn, paths, negotiate)
+	stats, err := ClientRun(osenv, opts, conn, paths, negotiate, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +263,7 @@ func doCmd(osenv *rsyncos.Env, opts *rsyncopts.Options, machine, user, path stri
 }
 
 // rsync/main.c:client_run
-func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteCloser, paths []string, negotiate bool) (*rsyncstats.TransferStats, error) {
+func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteCloser, paths []string, negotiate bool, sourceFS fs.FS) (*rsyncstats.TransferStats, error) {
 	crd := &rsyncwire.CountingReader{R: conn}
 	cwr := &rsyncwire.CountingWriter{W: conn}
 	c := &rsyncwire.Conn{
@@ -318,6 +319,11 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 			Env:      osenv,
 			Progress: progress.NewPrinter(osenv.Stdout, time.Now),
 		}
+		modPath := rsync.FileSystemRoot
+		if sourceFS != nil {
+			st.Source = sender.NewFSSource(sourceFS)
+			modPath = "."
+		}
 		if opts.Verbose() {
 			osenv.Logf("sender(paths=%q)", paths)
 		}
@@ -326,6 +332,9 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 		// into absolute paths so that we can call Transfer.Do()
 		// with modPath="/" below.
 		for idx, path := range paths {
+			if sourceFS != nil {
+				continue
+			}
 			// Trailing slashes are meaningful to rsync,
 			// so preserve a trailing slash across filepath.Abs.
 			hasTrailingSlash := strings.HasSuffix(path, "/")
@@ -339,7 +348,7 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 			}
 		}
 
-		stats, err := st.Do(crd, cwr, rsync.FileSystemRoot, paths, nil)
+		stats, err := st.Do(crd, cwr, modPath, paths, nil)
 		if err != nil {
 			return nil, err
 		}

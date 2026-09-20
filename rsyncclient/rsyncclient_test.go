@@ -400,3 +400,56 @@ func TestClientServerCommandSenderIgnoreExisting(t *testing.T) {
 		t.Fatalf("missing file contents: got %q, want %q", got, want)
 	}
 }
+
+func TestClientServerCommandSenderSourceFS(t *testing.T) {
+	t.Parallel()
+
+	stderr := testlogger.New(t)
+	tmp := t.TempDir()
+	sourceRoot := filepath.Join(tmp, "source")
+	dest := filepath.Join(tmp, "dest")
+	relative := filepath.Join("Artist", "Album", "track.mp3")
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(sourceRoot, relative)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceRoot, relative), []byte("audio"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := rsyncclient.New([]string{"-a"},
+		rsyncclient.WithSender(),
+		rsyncclient.WithSourceFS(os.DirFS(sourceRoot)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := rsyncd.NewServer(nil, rsyncd.WithStderr(stderr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdinrd, stdinwr := io.Pipe()
+	stdoutrd, stdoutwr := io.Pipe()
+	conn := rsyncd.NewConnection(stdinrd, stdoutwr, "<io.Pipe>")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := server.HandleConnArgs(t.Context(), conn, nil, client.ServerCommandOptions(dest)); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	rw := &rsync.BothCloser{ReadCloser: stdoutrd, WriteCloser: stdinwr}
+	if _, err := client.Run(t.Context(), rw, []string{"./"}); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	got, err := os.ReadFile(filepath.Join(dest, relative))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(got), "audio"; got != want {
+		t.Fatalf("contents: got %q, want %q", got, want)
+	}
+}

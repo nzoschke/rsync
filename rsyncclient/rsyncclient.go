@@ -62,6 +62,23 @@ func WithFileList() Option {
 	})
 }
 
+// Progress reports receiver-side work as deltas. Checked counts bytes read
+// from pre-existing destination files, Written counts bytes installed at the
+// destination, and Files counts completed regular files.
+type Progress struct {
+	Checked int64
+	Files   int64
+	Written int64
+}
+
+// WithProgress reports receiver-side checksum, write, and file progress. It
+// has no effect when the client is operating in sender mode.
+func WithProgress(progress func(Progress)) Option {
+	return clientOptionFunc(func(c *Client) {
+		c.progress = progress
+	})
+}
+
 // WithoutNegotiate disables protocol version negotiation (enabled by default).
 func WithoutNegotiate() Option {
 	return clientOptionFunc(func(c *Client) {
@@ -82,6 +99,7 @@ type Client struct {
 	sender          bool
 	sourceFS        fs.FS
 	includeFileList bool
+	progress        func(Progress)
 }
 
 // New creates a new [Client]. You can call [Client.Run] one or more times with
@@ -185,7 +203,15 @@ func (c *Client) Run(ctx context.Context, conn io.ReadWriteCloser, paths []strin
 			}
 		}
 	}
-	stats, err := maincmd.ClientRun(c.osenv, c.opts, conn, paths, c.negotiate, c.sourceFS, receiveFileList)
+	var checksumProgress func(int64)
+	var writeProgress func(int64)
+	var fileProgress func()
+	if c.progress != nil {
+		checksumProgress = func(bytes int64) { c.progress(Progress{Checked: bytes}) }
+		writeProgress = func(bytes int64) { c.progress(Progress{Written: bytes}) }
+		fileProgress = func() { c.progress(Progress{Files: 1}) }
+	}
+	stats, err := maincmd.ClientRun(c.osenv, c.opts, conn, paths, c.negotiate, c.sourceFS, receiveFileList, checksumProgress, writeProgress, fileProgress)
 	if err != nil {
 		return nil, err
 	}

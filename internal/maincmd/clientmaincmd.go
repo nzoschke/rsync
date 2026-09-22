@@ -148,7 +148,7 @@ func rsyncMain(ctx context.Context, osenv *rsyncos.Env, opts *rsyncopts.Options,
 		}
 		negotiate = false // already done
 	}
-	stats, err := ClientRun(osenv, opts, conn, paths, negotiate, nil, nil)
+	stats, err := ClientRun(osenv, opts, conn, paths, negotiate, nil, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func doCmd(osenv *rsyncos.Env, opts *rsyncopts.Options, machine, user, path stri
 }
 
 // rsync/main.c:client_run
-func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteCloser, paths []string, negotiate bool, sourceFS fs.FS, receiveFileList func([]*receiver.File)) (*rsyncstats.TransferStats, error) {
+func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteCloser, paths []string, negotiate bool, sourceFS fs.FS, receiveFileList func([]*receiver.File), checksumProgress func(int64), writeProgress func(int64), fileProgress func()) (*rsyncstats.TransferStats, error) {
 	crd := &rsyncwire.CountingReader{R: conn}
 	cwr := &rsyncwire.CountingWriter{W: conn}
 	c := &rsyncwire.Conn{
@@ -384,11 +384,14 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 			InfoGTE:  opts.InfoGTE,
 			DebugGTE: opts.DebugGTE,
 		},
-		Dest:     paths[0],
-		Env:      osenv,
-		Conn:     c,
-		Seed:     seed,
-		Progress: progress.NewPrinter(osenv.Stdout, time.Now),
+		Dest:             paths[0],
+		Env:              osenv,
+		Conn:             c,
+		Seed:             seed,
+		Progress:         progress.NewPrinter(osenv.Stdout, time.Now),
+		ChecksumProgress: checksumProgress,
+		WriteProgress:    writeProgress,
+		FileProgress:     fileProgress,
 	}
 	if opts.Verbose() {
 		osenv.Logf("receiving to dest=%s", rt.Dest)

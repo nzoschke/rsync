@@ -10,8 +10,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"time"
 
 	"github.com/gokrazy/rsync/internal/maincmd"
+	"github.com/gokrazy/rsync/internal/receiver"
 	"github.com/gokrazy/rsync/internal/rsyncopts"
 	"github.com/gokrazy/rsync/internal/rsyncos"
 	"github.com/gokrazy/rsync/internal/rsyncstats"
@@ -52,6 +54,14 @@ func WithSourceFS(fsys fs.FS) Option {
 	})
 }
 
+// WithFileList includes a structured copy of the sender's file list in the
+// [Result]. Without this option, [Result.FileList] is nil.
+func WithFileList() Option {
+	return clientOptionFunc(func(c *Client) {
+		c.includeFileList = true
+	})
+}
+
 // WithoutNegotiate disables protocol version negotiation (enabled by default).
 func WithoutNegotiate() Option {
 	return clientOptionFunc(func(c *Client) {
@@ -66,11 +76,12 @@ func DontRestrict() Option {
 }
 
 type Client struct {
-	osenv     *rsyncos.Env
-	opts      *rsyncopts.Options
-	negotiate bool
-	sender    bool
-	sourceFS  fs.FS
+	osenv           *rsyncos.Env
+	opts            *rsyncopts.Options
+	negotiate       bool
+	sender          bool
+	sourceFS        fs.FS
+	includeFileList bool
 }
 
 // New creates a new [Client]. You can call [Client.Run] one or more times with
@@ -109,9 +120,25 @@ func (c *Client) ServerCommandOptions(path string, paths ...string) []string {
 	return c.opts.CommandOptions(path, paths...)
 }
 
+// FileListEntry describes one entry in the sender's file list. Names are
+// returned directly from the rsync protocol and do not pass through a textual
+// output format.
+type FileListEntry struct {
+	Name       string
+	Length     int64
+	ModTime    time.Time
+	Mode       fs.FileMode
+	UID        int32
+	GID        int32
+	LinkTarget string
+	Rdev       int32
+	Checksum   []byte
+}
+
 // Result contains information about a transfer.
 type Result struct {
-	Stats *rsyncstats.TransferStats
+	Stats    *rsyncstats.TransferStats
+	FileList []FileListEntry
 }
 
 // Run starts one run of the rsync protocol (not the rsync daemon protocol), see
@@ -133,11 +160,36 @@ type Result struct {
 // [Client.ServerCommandOptions] to the server and then arrange for two
 // [io.ReadWriter] connections between client and server.
 func (c *Client) Run(ctx context.Context, conn io.ReadWriteCloser, paths []string) (*Result, error) {
-	stats, err := maincmd.ClientRun(c.osenv, c.opts, conn, paths, c.negotiate, c.sourceFS)
+	var fileList []FileListEntry
+	var receiveFileList func([]*receiver.File)
+	if c.includeFileList {
+		receiveFileList = func(files []*receiver.File) {
+			fileList = make([]FileListEntry, len(files))
+			for idx, file := range files {
+				var checksum []byte
+				if c.opts.AlwaysChecksum() {
+					checksum = make([]byte, len(file.Checksum))
+					copy(checksum, file.Checksum[:])
+				}
+				fileList[idx] = FileListEntry{
+					Name:       file.Name,
+					Length:     file.Length,
+					ModTime:    file.ModTime,
+					Mode:       file.FileMode(),
+					UID:        file.Uid,
+					GID:        file.Gid,
+					LinkTarget: file.LinkTarget,
+					Rdev:       file.Rdev,
+					Checksum:   checksum,
+				}
+			}
+		}
+	}
+	stats, err := maincmd.ClientRun(c.osenv, c.opts, conn, paths, c.negotiate, c.sourceFS, receiveFileList)
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Stats: stats}, nil
+	return &Result{Stats: stats, FileList: fileList}, nil
 }
 
 // RunDaemon starts one run of the rsync daemon protocol, meaning it performs

@@ -148,7 +148,7 @@ func rsyncMain(ctx context.Context, osenv *rsyncos.Env, opts *rsyncopts.Options,
 		}
 		negotiate = false // already done
 	}
-	stats, err := ClientRun(osenv, opts, conn, paths, negotiate, nil)
+	stats, err := ClientRun(osenv, opts, conn, paths, negotiate, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func doCmd(osenv *rsyncos.Env, opts *rsyncopts.Options, machine, user, path stri
 }
 
 // rsync/main.c:client_run
-func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteCloser, paths []string, negotiate bool, sourceFS fs.FS) (*rsyncstats.TransferStats, error) {
+func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteCloser, paths []string, negotiate bool, sourceFS fs.FS, receiveFileList func([]*receiver.File)) (*rsyncstats.TransferStats, error) {
 	crd := &rsyncwire.CountingReader{R: conn}
 	cwr := &rsyncwire.CountingWriter{W: conn}
 	c := &rsyncwire.Conn{
@@ -431,6 +431,9 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 	fileList, err := rt.ReceiveFileList()
 	if err != nil {
 		return nil, err
+	}
+	if receiveFileList != nil {
+		receiveFileList(fileList)
 	}
 	if opts.DebugGTE(rsyncopts.DEBUG_FLIST, 2) {
 		osenv.Logf("received %d names", len(fileList))

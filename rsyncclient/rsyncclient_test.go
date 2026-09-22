@@ -143,9 +143,13 @@ func TestClientServerModule(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(src, "hello"), []byte(hello), 0644); err != nil {
 		t.Fatal(err)
 	}
+	const unusualName = "line\nbreak"
+	if err := os.WriteFile(filepath.Join(src, unusualName), []byte("raw name"), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	args := []string{"-av"}
-	client, err := rsyncclient.New(args, rsyncclient.WithStderr(stderr))
+	client, err := rsyncclient.New(args, rsyncclient.WithStderr(stderr), rsyncclient.WithFileList())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,8 +187,24 @@ func TestClientServerModule(t *testing.T) {
 		ReadCloser:  stdoutrd,
 		WriteCloser: stdinwr,
 	}
-	if _, err := client.Run(t.Context(), rw, []string{dest}); err != nil {
+	result, err := client.Run(t.Context(), rw, []string{dest})
+	if err != nil {
 		t.Fatal(err)
+	}
+	files := make(map[string]rsyncclient.FileListEntry)
+	for _, entry := range result.FileList {
+		if entry.Mode.IsRegular() {
+			files[entry.Name] = entry
+		}
+	}
+	if got, want := len(files), 2; got != want {
+		t.Fatalf("regular file-list entries: got %d, want %d: %#v", got, want, files)
+	}
+	if got, want := files["hello"].Length, int64(len(hello)); got != want {
+		t.Errorf("hello file-list length: got %d, want %d", got, want)
+	}
+	if got, want := files[unusualName].Length, int64(len("raw name")); got != want {
+		t.Errorf("unusual-name file-list length: got %d, want %d", got, want)
 	}
 
 	got, err := os.ReadFile(filepath.Join(dest, "hello"))

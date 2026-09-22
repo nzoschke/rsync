@@ -70,7 +70,7 @@ func (rt *Transfer) skipFile(f *File, st os.FileInfo) (bool, error) {
 	}
 
 	if rt.Opts.AlwaysChecksum {
-		checksum, err := rsyncchecksum.RootChecksum(rt.DestRoot, f.Name)
+		checksum, err := rsyncchecksum.RootChecksum(rt.DestRoot, f.Name, rt.ChecksumProgress)
 		if err != nil {
 			return false, err
 		}
@@ -311,6 +311,9 @@ func (rt *Transfer) recvGenerator(idx int, f *File) error {
 		}
 		if err := rt.setPerms(f, perm); err != nil {
 			return err
+		}
+		if rt.FileProgress != nil {
+			rt.FileProgress()
 		}
 		return nil
 	}

@@ -45,6 +45,11 @@ type Transfer struct {
 	DestRoot *os.Root
 	Env      *rsyncos.Env
 	Progress progress.Printer
+	// ChecksumProgress and WriteProgress report byte deltas. FileProgress
+	// reports one completed regular file after it is verified or installed.
+	ChecksumProgress func(int64)
+	WriteProgress    func(int64)
+	FileProgress     func()
 
 	// state
 	Conn         *rsyncwire.Conn

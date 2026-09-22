@@ -71,3 +71,24 @@ func TestSyncExtended(t *testing.T) {
 		}
 	}
 }
+
+func TestReaderChecksumProgressReportsBytes(t *testing.T) {
+	data := bytes.Repeat([]byte("checksum progress"), 10_000)
+	var checked int64
+	got, err := rsyncchecksum.ReaderChecksumProgress(bytes.NewReader(data), func(delta int64) {
+		checked += delta
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := rsyncchecksum.ReaderChecksum(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("checksum mismatch: got %x, want %x", got, want)
+	}
+	if checked != int64(len(data)) {
+		t.Fatalf("checked %d bytes, want %d", checked, len(data))
+	}
+}

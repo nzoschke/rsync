@@ -180,6 +180,9 @@ func (rt *Transfer) receiveData(f *File, localFile *os.File, perm fs.FileMode) e
 				return err
 			}
 			offset += n
+			if rt.WriteProgress != nil {
+				rt.WriteProgress(int64(n))
+			}
 			continue
 		}
 		if localFile == nil {
@@ -201,6 +204,9 @@ func (rt *Transfer) receiveData(f *File, localFile *os.File, perm fs.FileMode) e
 			return err
 		}
 		offset += n
+		if rt.WriteProgress != nil {
+			rt.WriteProgress(int64(n))
+		}
 	}
 	localSum := h.Sum(nil)
 	remoteSum := make([]byte, len(localSum))
@@ -227,6 +233,9 @@ func (rt *Transfer) receiveData(f *File, localFile *os.File, perm fs.FileMode) e
 
 	if err := rt.setPerms(f, perm); err != nil {
 		return err
+	}
+	if rt.FileProgress != nil {
+		rt.FileProgress()
 	}
 
 	return nil

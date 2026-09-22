@@ -58,20 +58,41 @@ func Checksum2(seed int32, buf []byte) []byte {
 }
 
 func ReaderChecksum(r io.Reader) ([]byte, error) {
+	return ReaderChecksumProgress(r, nil)
+}
+
+func ReaderChecksumProgress(r io.Reader, progress func(int64)) ([]byte, error) {
 	h := md4.New()
-	if _, err := io.Copy(h, r); err != nil {
+	w := io.Writer(h)
+	if progress != nil {
+		w = progressWriter{Writer: h, progress: progress}
+	}
+	if _, err := io.Copy(w, r); err != nil {
 		return nil, err
 	}
 	return h.Sum(nil), nil
 }
 
-func RootChecksum(root *os.Root, fn string) ([]byte, error) {
+type progressWriter struct {
+	io.Writer
+	progress func(int64)
+}
+
+func (w progressWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	if n > 0 {
+		w.progress(int64(n))
+	}
+	return n, err
+}
+
+func RootChecksum(root *os.Root, fn string, progress func(int64)) ([]byte, error) {
 	f, err := root.Open(fn)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ReaderChecksum(f)
+	return ReaderChecksumProgress(f, progress)
 }
 
 const Size = md4.Size

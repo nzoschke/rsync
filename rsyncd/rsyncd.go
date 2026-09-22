@@ -60,6 +60,21 @@ func WithStderr(stderr io.WriteCloser) Option {
 	})
 }
 
+// Progress reports receiver-side byte deltas and completed regular files.
+type Progress struct {
+	Checked int64
+	Files   int64
+	Written int64
+}
+
+// WithProgress reports receiver-side checksum and write progress. The callback
+// may be invoked from concurrent receiver goroutines.
+func WithProgress(report func(Progress)) Option {
+	return serverOptionFunc(func(s *Server) {
+		s.progress = report
+	})
+}
+
 func DontRestrict() Option {
 	return serverOptionFunc(func(s *Server) {
 		s.dontRestrict = true
@@ -109,6 +124,7 @@ type Server struct {
 	stderr       io.WriteCloser
 	logger       log.Logger
 	dontRestrict bool
+	progress     func(Progress)
 
 	modules []Module
 }
@@ -469,6 +485,11 @@ func (s *Server) handleConnReceiver(module *Module, crd *rsyncwire.CountingReade
 		Conn:     c,
 		Seed:     sessionChecksumSeed,
 		Progress: progress.NewPrinter(io.Discard, time.Now),
+	}
+	if s.progress != nil {
+		rt.ChecksumProgress = func(bytes int64) { s.progress(Progress{Checked: bytes}) }
+		rt.WriteProgress = func(bytes int64) { s.progress(Progress{Written: bytes}) }
+		rt.FileProgress = func() { s.progress(Progress{Files: 1}) }
 	}
 	if err := os.MkdirAll(rt.Dest, 0755); err != nil {
 		return fmt.Errorf("MkdirAll(dest=%s): %v", rt.Dest, err)
